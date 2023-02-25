@@ -1,34 +1,35 @@
-name: Deploy for preview
+name: Build & deploy
 
-on: [pull_request]
+on:
+  push:
+    branches:
+      - master
 
 jobs:
-  preview:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@master
-      - uses: chrnorm/deployment-action@releases/v1
-        name: Create GitHub deployment
-        id: test
+      - uses: actions/checkout@v2
+      - name: Cache modules
+        uses: actions/cache@v1
+        id: yarn-cache
         with:
-          token: ${{ secrets.GITHUB_TOKEN}}
-          description: "Preview my app"
-          environment: preview
-
-      - uses: shallwefootball/s3-upload-action@master
-        name: Upload S3
-        id: S3
+          path: node_modules
+          key:${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: ${{ runner.os }}-yarn-
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
         with:
-          aws_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY}}
-          aws_bucket: ${{ secrets.AWS_S3_BUCKET }}
-          source_dir: "static"
-
-      - name: Update deployment status (success)
-        if: success()
-        uses: chrnorm/deployment-status@releases/v1
+          aws-access-key-id:${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key:${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-2
+      - name: Use Node.js 12.x
+        uses: actions/setup-node@v1
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          target_url: https://aws-bucket.s3.ap-northeast-2.amazonaws.com/${{steps.S3.outputs.object_key}}/index.html
-          state: "success"
-          deployment_id: ${{ steps.test.outputs.deployment_id }}
+          node-version: 12.x
+      - name: Install dependencies
+        run: yarn
+      - name: Build
+        run: yarn build
+      - name: Deploy
+        run: aws s3 sync ./YOUR-BUILD-DIR s3://YOUR-BUCKET-NAME
